@@ -3,17 +3,17 @@ from langchain_core.tools import tool
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import PromptTemplate
 from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.documents import Document
 
 # --- CONFIGURACIÓN GEMINI ---
-GOOGLE_API_KEY = "AIzaSyApNBtnuGOQFMf-jFz4m6M1UYkhIob8lSU"
+GOOGLE_API_KEY = "AIzaSyApNBtnuGOQFMf-jFz4m6M1UYkhIob8lSU" # Asegúrate de que esta sea tu API Key válida
 os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
 
-# --- MODELO GEMINI (manteniendo gemini-2.0-flash-lite) ---
+# --- MODELO GEMINI (manteniendo gemini-1.5-flash) ---
 llm = ChatGoogleGenerativeAI(
-    model="models/gemini-2.0-flash-lite", # Este es el modelo funcional y gratuito que estamos usando
+    model="models/gemini-1.5-flash", # ¡Este es el modelo Gemini que estamos usando!
     temperature=0.7,
     google_api_key=GOOGLE_API_KEY
 )
@@ -36,7 +36,7 @@ def test_connection():
         return False
 
 # --- EMBEDDINGS & VECTORSTORE ---
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=GOOGLE_API_KEY)
 def load_vectorstore():
     texts = ["LangChain permite combinar múltiples fuentes de datos.", "FAISS es una librería para búsquedas vectoriales eficientes.", "Los modelos de lenguaje pueden responder preguntas generales y usar herramientas específicas.", "Gemini es un modelo generativo avanzado de Google que puede procesar texto y mantener conversaciones.", "Los agentes conversacionales pueden mantener contexto a lo largo de múltiples intercambios."]
     return FAISS.from_documents([Document(page_content=t) for t in texts], embeddings)
@@ -165,19 +165,19 @@ Thought:{agent_scratchpad}""")
 agent = create_react_agent(llm=llm, tools=tools, prompt=prompt)
 agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True, max_iterations=5)
 
-# --- APP PRINCIPAL ---
-if __name__ == "__main__":
-    print("🤖 Agente Conversacional Multi-fuente con Gemini")
-    print("=" * 55)
-    if not test_connection(): exit(1)
-    print("\nCapacidades:\n✅ Conversación general\n✅ Base de datos vectorial\n✅ Base de datos SQL (con búsqueda por ID)\n✅ API Rick and Morty (con búsqueda por ID/nombre)\n✅ Mantiene contexto\n✅ Powered by Google Gemini 1.5 Flash\n" + "=" * 55)
-    print("Ejemplos:\n- '¿Cómo estás?'\n- '¿Qué es Python?'\n- '¿Quién gana más?'\n- 'Busca a Morty'\n- '¿Qué es LangChain?'\n- 'Cuéntame un chiste'\n- 'Quién es el ID 2'\n- 'Personaje de Rick and Morty con ID 1'\n" + "=" * 55)
-    print("\nEscribe 'salir' para terminar.\n")
-    while True:
-        q = input("\n💬 Tú: ");
-        if q.lower() in ["salir", "exit", "quit"]: print("👋 ¡Hasta luego!"); break
-        try:
-            res = agent_executor.invoke({"input": q, "conversation_context": get_context()})
-            print(f"\n🤖 Asistente: {res['output']}"); add_to_history(q, res['output'])
-        except Exception as e:
-            err_msg = f"Disculpa, tuve un problema: {str(e)}"; print(f"\n❌ {err_msg}"); add_to_history(q, err_msg)
+# Las siguientes líneas se comentan o eliminan para que el archivo sea importable
+# if __name__ == "__main__":
+#     print("🤖 Agente Conversacional Multi-fuente con Gemini")
+#     print("=" * 55)
+#     if not test_connection(): exit(1)
+#     print("\nCapacidades:\n✅ Conversación general\n✅ Base de datos vectorial\n✅ Base de datos SQL (con búsqueda por ID)\n✅ API Rick and Morty (con búsqueda por ID/nombre)\n✅ Mantiene contexto\n✅ Powered by Google Gemini 1.5 Flash\n" + "=" * 55)
+#     print("Ejemplos:\n- '¿Cómo estás?'\n- '¿Qué es Python?'\n- '¿Quién gana más?'\n- 'Busca a Morty'\n- '¿Qué es LangChain?'\n- 'Cuéntame un chiste'\n- 'Quién es el ID 2'\n- 'Personaje de Rick and Morty con ID 1'\n" + "=" * 55)
+#     print("\nEscribe 'salir' para terminar.\n")
+#     while True:
+#         q = input("\n💬 Tú: ");
+#         if q.lower() in ["salir", "exit", "quit"]: print("👋 ¡Hasta luego!"); break
+#         try:
+#             res = agent_executor.invoke({"input": q, "conversation_context": get_context()})
+#             print(f"\n🤖 Asistente: {res['output']}"); add_to_history(q, res['output'])
+#         except Exception as e:
+#             err_msg = f"Disculpa, tuve un problema: {str(e)}"; print(f"\n❌ {err_msg}"); add_to_history(q, err_msg)
