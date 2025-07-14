@@ -11,9 +11,9 @@ from langchain_core.documents import Document
 GOOGLE_API_KEY = "AIzaSyApNBtnuGOQFMf-jFz4m6M1UYkhIob8lSU" # Asegúrate de que esta sea tu API Key válida
 os.environ["GOOGLE_API_KEY"] = GOOGLE_API_KEY
 
-# --- MODELO GEMINI (manteniendo gemini-1.5-flash) ---
+# --- MODELO GEMINI (manteniendo gemini-2.0-flash) ---
 llm = ChatGoogleGenerativeAI(
-    model="models/gemini-1.5-flash", # ¡Este es el modelo Gemini que estamos usando!
+    model="models/gemini-2.0-flash", # ¡Este es el modelo Gemini que estamos usando!
     temperature=0.7,
     google_api_key=GOOGLE_API_KEY
 )
