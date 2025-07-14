@@ -8,3 +8,4 @@ langchain-huggingface
 langchain-google-genai
 langchain
 python-multipart
+sentence-transformers
