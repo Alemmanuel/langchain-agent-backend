@@ -9,3 +9,4 @@ langchain-google-genai
 langchain
 python-multipart
 sentence-transformers
+faiss-gpu
