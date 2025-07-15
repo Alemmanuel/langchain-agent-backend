@@ -29,9 +29,20 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# --- CONFIGURACIÓN CORS ---
+# Añade explícitamente tu origen de desarrollo (localhost)
+# Para producción, deberías reemplazar "*" con la URL de tu frontend desplegado
+origins = [
+    "http://localhost:3000", # Si usas python -m http.server 3000
+    "http://127.0.0.1:3000", # Otra forma de localhost
+    "http://localhost:5500", # Si usas Live Server u otro en 5500
+    "http://127.0.0.1:5500", # Tu origen actual que está dando problemas
+    "*" # Mantener el comodín para otras pruebas, pero sé específico en producción
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins, # <--- CAMBIO CLAVE AQUÍ
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -98,12 +109,11 @@ async def upload_cedula(file: UploadFile = File(...)):
         ]
         
         # Invocar al LLM directamente para procesar la imagen
-        # Ahora, envolvemos HumanMessage en una LISTA
         loop = asyncio.get_running_loop()
         gemini_response = await loop.run_in_executor(
             None,
             llm.invoke,
-            [HumanMessage(content=prompt_content)] # <--- CAMBIO CLAVE AQUÍ: ¡lista alrededor del HumanMessage!
+            [HumanMessage(content=prompt_content)]
         )
         
         extracted_data = gemini_response.content
