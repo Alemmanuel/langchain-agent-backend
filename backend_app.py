@@ -1,16 +1,21 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+import os
 import uvicorn
 import asyncio
-import os
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from base64 import b64encode
 
-# Importar el agente y sus componentes desde el archivo modificado
+# Importar HumanMessage para manejar el contenido multimodal correctamente
+from langchain_core.messages import HumanMessage
+
+# Importar el agente y sus componentes
 from agent import (
     agent_executor,
     add_to_history,
     get_context,
     test_connection,
+    llm
 )
 
 # Definir el modelo de datos para la entrada de la API
@@ -19,15 +24,14 @@ class ChatRequest(BaseModel):
 
 # Inicializar la aplicación FastAPI
 app = FastAPI(
-    title="Agente Conversacional LangChain (Gemini Backend)",
-    description="Backend para interactuar con el agente LangChain multi-fuente, potenciado por Google Gemini.",
+    title="Agente Conversacional LangChain (Backend API)",
+    description="Backend API para interactuar con el agente LangChain multi-fuente, potenciado por Google Gemini.",
     version="1.0.0",
 )
 
-# Configurar CORS para permitir solicitudes desde el frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En producción, restringe esto a tu dominio de frontend
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,27 +40,24 @@ app.add_middleware(
 # Evento de inicio: probar la conexión con Gemini
 @app.on_event("startup")
 async def startup_event():
-    print("🚀 Iniciando backend...")
+    print("🚀 Iniciando backend API...")
     if not test_connection():
         print("❌ La conexión con Gemini falló al iniciar. El backend podría no funcionar correctamente.")
     else:
-        print("✅ Backend iniciado y conectado a Gemini.")
+        print("✅ Backend API iniciado y conectado a Gemini.")
 
-# Ruta principal para verificar que el backend está funcionando
+# Ruta principal para verificar que el backend está funcionando (ahora solo una API)
 @app.get("/")
 async def read_root():
-    return {"message": "Bienvenido al Agente Conversacional LangChain. Usa /chat para interactuar."}
+    return {"message": "Bienvenido al Backend API del Agente Conversacional LangChain. Usa /api/chat o /api/upload-cedula para interactuar."}
 
-# Ruta para interactuar con el agente
-@app.post("/chat")
+# Ruta para interactuar con el agente (conversación)
+@app.post("/api/chat")
 async def chat_with_agent(request: ChatRequest):
     user_query = request.query
     
     try:
-        # Obtener el contexto de conversación actual
         context = get_context()
-        
-        # Invocar al agente con la pregunta del usuario y el contexto
         loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(
             None,
@@ -65,18 +66,55 @@ async def chat_with_agent(request: ChatRequest):
         )
         
         agent_response = response["output"]
-        
-        # Añadir el intercambio al historial de conversación
         add_to_history(user_query, agent_response)
         
         return {"response": agent_response}
     except Exception as e:
-        print(f"❌ Error al procesar la petición: {e}")
+        print(f"❌ Error al procesar la petición de chat: {e}")
         raise HTTPException(status_code=500, detail=f"Error interno del servidor: {str(e)}")
+
+# --- RUTA PARA SUBIR Y LEER CÉDULAS ---
+@app.post("/api/upload-cedula")
+async def upload_cedula(file: UploadFile = File(...)):
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen.")
+
+    try:
+        image_bytes = await file.read()
+        image_base64 = b64encode(image_bytes).decode("utf-8")
+
+        # Crear el contenido multimodal para Gemini
+        prompt_content = [
+            {
+                "type": "text",
+                "text": "Extrae la siguiente información de esta cédula de identidad, si está presente: Nombre completo, Número de Identificación (Cédula), Fecha de Nacimiento, Fecha de Expedición, Fecha de Vencimiento, Género, Nacionalidad. Presenta la información de forma clara y estructurada, por ejemplo, en una lista. Si algún dato no se encuentra, indícalo."
+            },
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{file.content_type};base64,{image_base64}"
+                }
+            }
+        ]
+        
+        # Invocar al LLM directamente para procesar la imagen
+        # Ahora, envolvemos HumanMessage en una LISTA
+        loop = asyncio.get_running_loop()
+        gemini_response = await loop.run_in_executor(
+            None,
+            llm.invoke,
+            [HumanMessage(content=prompt_content)] # <--- CAMBIO CLAVE AQUÍ: ¡lista alrededor del HumanMessage!
+        )
+        
+        extracted_data = gemini_response.content
+        
+        return {"message": "Cédula procesada exitosamente", "extracted_data": extracted_data}
+
+    except Exception as e:
+        print(f"❌ Error al procesar la imagen de la cédula: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al procesar la imagen: {str(e)}")
 
 # Para ejecutar la aplicación directamente
 if __name__ == "__main__":
-    # Obtener el puerto de la variable de entorno o usar 8000 como predeterminado
     port = int(os.environ.get("PORT", 8000))
-    # En producción, host debe ser 0.0.0.0 para aceptar conexiones externas
     uvicorn.run(app, host="0.0.0.0", port=port)

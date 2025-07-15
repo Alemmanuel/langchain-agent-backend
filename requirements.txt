@@ -6,7 +6,7 @@ langchain-core
 langchain-community
 langchain-huggingface
 langchain-google-genai
-langchain
-python-multipart
+langchain # Necesario para langchain.agents
+python-multipart # <-- Asegúrate de que esta línea esté presente
 sentence-transformers
 faiss-cpu
