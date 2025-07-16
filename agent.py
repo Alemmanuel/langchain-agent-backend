@@ -6,6 +6,8 @@ from langchain_community.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.documents import Document
+from langchain_core.callbacks import BaseCallbackHandler # Importar BaseCallbackHandler
+from langchain_core.outputs import LLMResult # Importar LLMResult para tipado
 
 # --- CONFIGURACIÓN GEMINI ---
 GOOGLE_API_KEY = "AIzaSyApNBtnuGOQFMf-jFz4m6M1UYkhIob8lSU" # Asegúrate de que esta sea tu API Key válida
@@ -125,6 +127,84 @@ def responder_pregunta_general(pregunta: str) -> str:
     try: return llm.invoke(p_general).content
     except Exception as e: return f"No pude procesar esa pregunta: {str(e)}"
 
+# --- TOKEN USAGE TRACKING ---
+class CustomTokenCallbackHandler(BaseCallbackHandler):
+    def __init__(self):
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.total_tokens = 0
+
+    def on_llm_end(self, response: LLMResult, **kwargs) -> None:
+        """Se ejecuta al finalizar una llamada a un LLM."""
+        print(f"\n--- DEBUG: on_llm_end called ---")
+        print(f"Full LLMResult object: {response}") # Print the full object
+        print(f"LLM Output: {response.llm_output}")
+        print(f"Generations: {response.generations}")
+
+        # Helper para buscar 'token_usage' recursivamente en diccionarios/listas
+        def _find_token_usage_recursively(data):
+            if isinstance(data, dict):
+                if "token_usage" in data and isinstance(data["token_usage"], dict):
+                    print(f"DEBUG: Found token_usage directly in dict: {data['token_usage']}")
+                    return data["token_usage"]
+                for key, value in data.items():
+                    # print(f"DEBUG: Searching in dict key: {key}") # Demasiado verboso, comentar
+                    result = _find_token_usage_recursively(value)
+                    if result:
+                        return result
+            elif isinstance(data, list):
+                for i, item in enumerate(data):
+                    # print(f"DEBUG: Searching in list item index: {i}") # Demasiado verboso, comentar
+                    result = _find_token_usage_recursively(item)
+                    if result:
+                        return result
+            return None
+
+        # 1. Intentar encontrar token_usage en llm_output (puede estar anidado)
+        usage = _find_token_usage_recursively(response.llm_output)
+        if usage:
+            self.prompt_tokens += usage.get("prompt_tokens", 0)
+            self.completion_tokens += usage.get("completion_tokens", 0)
+            self.total_tokens += usage.get("total_tokens", 0)
+            print(f"DEBUG: Tokens accumulated from llm_output: {usage}")
+            print(f"DEBUG: Current accumulated tokens: P={self.prompt_tokens}, C={self.completion_tokens}, T={self.total_tokens}")
+            return
+
+        # 2. Si no se encontró en llm_output, intentar en generation_info de cada generación
+        for i, generation in enumerate(response.generations):
+            print(f"DEBUG: Checking generation {i}: {generation}")
+            if generation.generation_info:
+                usage = _find_token_usage_recursively(generation.generation_info)
+                if usage:
+                    self.prompt_tokens += usage.get("prompt_tokens", 0)
+                    self.completion_tokens += usage.get("completion_tokens", 0)
+                    self.total_tokens += usage.get("total_tokens", 0)
+                    print(f"DEBUG: Tokens accumulated from generation_info: {usage}")
+                    print(f"DEBUG: Current accumulated tokens: P={self.prompt_tokens}, C={self.completion_tokens}, T={self.total_tokens}")
+                    return # Salir después de encontrar el primer uso de tokens
+
+        print("DEBUG: No token usage found after exhaustive search for this LLM call.")
+        print(f"DEBUG: Current accumulated tokens: P={self.prompt_tokens}, C={self.completion_tokens}, T={self.total_tokens}")
+        print(f"--- END DEBUG ---")
+
+
+    def reset_tokens(self):
+        """Reinicia los contadores de tokens."""
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.total_tokens = 0
+
+    def get_tokens(self):
+        """Retorna el uso de tokens acumulado."""
+        return {
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "total_tokens": self.total_tokens,
+        }
+
+# Instanciar el handler globalmente para que el backend_app pueda acceder a él
+token_callback_handler = CustomTokenCallbackHandler()
+
 # --- TOOLS & PROMPT ---
 tools = [buscar_vector, buscar_sql, buscar_rick_morty, responder_pregunta_general]
 prompt = PromptTemplate.from_template("""Eres un asistente conversacional inteligente.
@@ -163,7 +243,14 @@ Thought:{agent_scratchpad}""")
 
 # --- AGENTE ---
 agent = create_react_agent(llm=llm, tools=tools, prompt=prompt)
-agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True, max_iterations=5)
+agent_executor = AgentExecutor(
+    agent=agent,
+    tools=tools,
+    verbose=True,
+    handle_parsing_errors=True,
+    max_iterations=5,
+    callbacks=[token_callback_handler] # ¡Aquí se añade el callback handler!
+)
 
 # Las siguientes líneas se comentan o eliminan para que el archivo sea importable
 # if __name__ == "__main__":
